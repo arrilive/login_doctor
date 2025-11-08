@@ -19,11 +19,18 @@ class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController padecimientosController = TextEditingController();
 
   bool _loading = false;
+  bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    
+    // Detectar cambios en los campos
+    nombreController.addListener(() => setState(() => _hasChanges = true));
+    edadController.addListener(() => setState(() => _hasChanges = true));
+    lugarNacimientoController.addListener(() => setState(() => _hasChanges = true));
+    padecimientosController.addListener(() => setState(() => _hasChanges = true));
   }
 
   Future<void> _loadUserData() async {
@@ -41,7 +48,10 @@ class _ProfilePageState extends State<ProfilePage> {
       padecimientosController.text = data['padecimientos'] ?? '';
     }
 
-    setState(() => _loading = false);
+    setState(() {
+      _loading = false;
+      _hasChanges = false;
+    });
   }
 
   Future<void> _saveUserData() async {
@@ -59,7 +69,10 @@ class _ProfilePageState extends State<ProfilePage> {
       'uid': user.uid,
     });
 
-    setState(() => _loading = false);
+    setState(() {
+      _loading = false;
+      _hasChanges = false;
+    });
 
     if (!mounted) return;
 
@@ -75,121 +88,261 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mi Perfil'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.person,
-                        size: 60,
-                        color: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.email_outlined,
-                            size: 16,
-                            color: Colors.grey[600],
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            user?.email ?? 'No disponible',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Información Personal',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nombreController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre completo',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: edadController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Edad',
-                      prefixIcon: Icon(Icons.cake_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: lugarNacimientoController,
-                    decoration: const InputDecoration(
-                      labelText: 'Lugar de nacimiento',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: padecimientosController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Padecimientos',
-                      prefixIcon: Icon(Icons.medical_information_outlined),
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    height: 56,
-                    child: ElevatedButton.icon(
-                      onPressed: _saveUserData,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text(
-                        'Guardar información',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+    return WillPopScope(
+      // ✅ GESTO: Confirmar antes de salir si hay cambios
+      onWillPop: () async {
+        if (_hasChanges) {
+          final shouldPop = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Cambios sin guardar'),
+              content: const Text('¿Deseas salir sin guardar los cambios?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Salir'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                ),
+              ],
             ),
+          );
+          return shouldPop ?? false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Mi Perfil'),
+          actions: [
+            // Indicador de cambios pendientes
+            if (_hasChanges)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.orange,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                // ✅ GESTO: Pull to refresh para recargar datos
+                onRefresh: _loadUserData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GestureDetector(
+                        // ✅ GESTO: Doble tap en el avatar para cambiar foto (simulado)
+                        onDoubleTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Cambio de foto próximamente'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        child: Center(
+                          child: Stack(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[50],
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.person,
+                                  size: 60,
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          'Toca dos veces para cambiar foto',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.email_outlined,
+                                size: 16,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                user?.email ?? 'No disponible',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Text(
+                        'Información Personal',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: nombreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre completo',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: edadController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Edad',
+                          prefixIcon: Icon(Icons.cake_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: lugarNacimientoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Lugar de nacimiento',
+                          prefixIcon: Icon(Icons.location_on_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: padecimientosController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Padecimientos',
+                          prefixIcon: Icon(Icons.medical_information_outlined),
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      
+                      // ✅ GESTO: Botón animado que cambia según hay cambios
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          onPressed: _hasChanges ? _saveUserData : null,
+                          icon: Icon(
+                            _hasChanges ? Icons.save_outlined : Icons.check_circle_outline,
+                          ),
+                          label: Text(
+                            _hasChanges ? 'Guardar cambios' : 'Todo actualizado',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _hasChanges 
+                                ? const Color(0xFF2196F3) 
+                                : Colors.grey[400],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // ✅ GESTO: Botón para descartar cambios
+                      if (_hasChanges)
+                        TextButton.icon(
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Descartar cambios'),
+                                content: const Text(
+                                  '¿Estás seguro de que deseas descartar los cambios?'
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Descartar'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                            
+                            if (confirm == true) {
+                              await _loadUserData();
+                            }
+                          },
+                          icon: const Icon(Icons.undo),
+                          label: const Text('Descartar cambios'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
     );
   }
 
