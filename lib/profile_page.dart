@@ -20,13 +20,18 @@ class _ProfilePageState extends State<ProfilePage> {
 
   bool _loading = false;
   bool _hasChanges = false;
+  String _selectedRol = 'paciente'; // ✅ NUEVO
+
+  final List<Map<String, dynamic>> _roles = [
+    {'value': 'paciente', 'label': 'Paciente', 'icon': Icons.person},
+    {'value': 'medico', 'label': 'Médico', 'icon': Icons.medical_services},
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     
-    // Detectar cambios en los campos
     nombreController.addListener(() => setState(() => _hasChanges = true));
     edadController.addListener(() => setState(() => _hasChanges = true));
     lugarNacimientoController.addListener(() => setState(() => _hasChanges = true));
@@ -46,6 +51,7 @@ class _ProfilePageState extends State<ProfilePage> {
       edadController.text = data['edad'] ?? '';
       lugarNacimientoController.text = data['lugar_nacimiento'] ?? '';
       padecimientosController.text = data['padecimientos'] ?? '';
+      _selectedRol = data['rol'] ?? 'paciente'; // ✅ NUEVO
     }
 
     setState(() {
@@ -67,6 +73,7 @@ class _ProfilePageState extends State<ProfilePage> {
       'padecimientos': padecimientosController.text.trim(),
       'email': user.email,
       'uid': user.uid,
+      'rol': _selectedRol, // ✅ NUEVO
     });
 
     setState(() {
@@ -89,7 +96,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = _auth.currentUser;
 
     return WillPopScope(
-      // ✅ GESTO: Confirmar antes de salir si hay cambios
       onWillPop: () async {
         if (_hasChanges) {
           final shouldPop = await showDialog<bool>(
@@ -104,8 +110,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Salir'),
                   style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: const Text('Salir'),
                 ),
               ],
             ),
@@ -118,7 +124,6 @@ class _ProfilePageState extends State<ProfilePage> {
         appBar: AppBar(
           title: const Text('Mi Perfil'),
           actions: [
-            // Indicador de cambios pendientes
             if (_hasChanges)
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -138,7 +143,6 @@ class _ProfilePageState extends State<ProfilePage> {
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
-                // ✅ GESTO: Pull to refresh para recargar datos
                 onRefresh: _loadUserData,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -147,7 +151,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       GestureDetector(
-                        // ✅ GESTO: Doble tap en el avatar para cambiar foto (simulado)
                         onDoubleTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -166,7 +169,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
-                                  Icons.person,
+                                  _selectedRol == 'medico' 
+                                      ? Icons.medical_services 
+                                      : Icons.person,
                                   size: 60,
                                   color: Theme.of(context).primaryColor,
                                 ),
@@ -234,6 +239,83 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 32),
+
+                      // ✅ NUEVO: Selector de Rol
+                      Text(
+                        'Rol en la Aplicación',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
+                          children: _roles.map((rol) {
+                            final isSelected = _selectedRol == rol['value'];
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedRol = rol['value'];
+                                    _hasChanges = true;
+                                  });
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? Theme.of(context).primaryColor
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.grey[300]!,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        rol['icon'],
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.grey[700],
+                                        size: 28,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        rol['label'],
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.grey[700],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      
                       Text(
                         'Información Personal',
                         style: TextStyle(
@@ -279,7 +361,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 32),
                       
-                      // ✅ GESTO: Botón animado que cambia según hay cambios
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
                         height: 56,
@@ -301,7 +382,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // ✅ GESTO: Botón para descartar cambios
                       if (_hasChanges)
                         TextButton.icon(
                           onPressed: () async {
@@ -319,10 +399,10 @@ class _ProfilePageState extends State<ProfilePage> {
                                   ),
                                   TextButton(
                                     onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Descartar'),
                                     style: TextButton.styleFrom(
                                       foregroundColor: Colors.red,
                                     ),
+                                    child: const Text('Descartar'),
                                   ),
                                 ],
                               ),

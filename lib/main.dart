@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // ✅ NUEVO IMPORT
 import 'firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'routes.dart';
@@ -18,7 +19,20 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'DoctorAppointmentApp',
-      debugShowCheckedModeBanner: false, // QUITA EL BANNER DEBUG
+      debugShowCheckedModeBanner: false,
+      
+      // ✅ AGREGAR ESTAS LÍNEAS (Localización)
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('es', 'ES'), // Español
+        Locale('en', 'US'), // Inglés
+      ],
+      locale: const Locale('es', 'ES'), // ✅ Locale por defecto
+      
       theme: ThemeData(
         primarySwatch: Colors.blue,
         primaryColor: const Color(0xFF2196F3),

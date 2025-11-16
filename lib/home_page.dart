@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'messages_page.dart';
 import 'settings_page.dart';
 import 'appointments_page.dart';
+import 'dashboard_page.dart';
+import 'dashboard_bloc.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,23 +18,26 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   String userName = 'Usuario';
+  String userRole = 'paciente'; // ✅ NUEVO
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
+    _loadUserData();
   }
 
-  Future<void> _loadUserName() async {
+  Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       final doc = await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(user.uid)
           .get();
+      
       if (doc.exists && doc.data()?['nombre'] != null) {
         setState(() {
           userName = doc.data()!['nombre'];
+          userRole = doc.data()!['rol'] ?? 'paciente'; // ✅ NUEVO
         });
       }
     }
@@ -53,17 +59,14 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       body: GestureDetector(
-        // ✅ GESTO: Deslizar horizontalmente para cambiar de pestaña
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity! > 0) {
-            // Deslizar a la derecha (anterior)
             if (_selectedIndex > 0) {
               setState(() {
                 _selectedIndex--;
               });
             }
           } else if (details.primaryVelocity! < 0) {
-            // Deslizar a la izquierda (siguiente)
             if (_selectedIndex < 2) {
               setState(() {
                 _selectedIndex++;
@@ -98,9 +101,8 @@ class _HomePageState extends State<HomePage> {
   Widget _buildHomePage() {
     return SafeArea(
       child: RefreshIndicator(
-        // ✅ GESTO: Pull to refresh para actualizar nombre
         onRefresh: () async {
-          await _loadUserName();
+          await _loadUserData();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -109,13 +111,62 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Mensaje de bienvenida
-                Text(
-                  '¡Hola, $userName!',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
+                // Mensaje de bienvenida con badge de rol
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '¡Hola, $userName!',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: userRole == 'medico'
+                                  ? Colors.green[100]
+                                  : Colors.blue[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  userRole == 'medico'
+                                      ? Icons.medical_services
+                                      : Icons.person,
+                                  size: 16,
+                                  color: userRole == 'medico'
+                                      ? Colors.green[700]
+                                      : Colors.blue[700],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  userRole == 'medico' ? 'Médico' : 'Paciente',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: userRole == 'medico'
+                                        ? Colors.green[700]
+                                        : Colors.blue[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -127,35 +178,71 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Dos widgets principales con gestos
+                // ✅ NUEVO: Widgets principales condicionales según el rol
                 Row(
                   children: [
-                    Expanded(
-                      child: _buildActionCard(
-                        icon: Icons.calendar_today,
-                        title: 'Agendar una Cita',
-                        color: const Color(0xFF2196F3),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const AppointmentsPage(),
-                            ),
-                          );
-                        },
+                    if (userRole == 'paciente') ...[
+                      // Widget para PACIENTES
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.calendar_today,
+                          title: 'Agendar una Cita',
+                          color: const Color(0xFF2196F3),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AppointmentsPage(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                    ] else if (userRole == 'medico') ...[
+                      // Widget para MÉDICOS
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.dashboard,
+                          title: 'Ver Dashboard',
+                          color: const Color(0xFF4CAF50),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BlocProvider(
+                                  create: (context) => DashboardBloc(),
+                                  child: const DashboardPage(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 16),
                     Expanded(
                       child: _buildActionCard(
                         icon: Icons.medical_information,
-                        title: 'Consejos médicos',
-                        color: const Color(0xFF4CAF50),
+                        title: userRole == 'medico' 
+                            ? 'Mis Citas' 
+                            : 'Consejos médicos',
+                        color: userRole == 'medico'
+                            ? const Color(0xFF2196F3)
+                            : const Color(0xFF4CAF50),
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Función de consejos médicos')),
-                          );
+                          if (userRole == 'medico') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AppointmentsPage(),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Función de consejos médicos')),
+                            );
+                          }
                         },
                       ),
                     ),
@@ -222,7 +309,6 @@ class _HomePageState extends State<HomePage> {
     required VoidCallback onTap,
   }) {
     return GestureDetector(
-      // ✅ GESTO: Tap con animación de escala
       onTapDown: (_) => setState(() {}),
       onTapUp: (_) => setState(() {}),
       onTapCancel: () => setState(() {}),
@@ -263,7 +349,6 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildSpecialistCard(String name, IconData icon) {
     return GestureDetector(
-      // ✅ GESTO: Tap para mostrar especialidad
       onTap: () {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -305,7 +390,6 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildInfoCard(String title, String subtitle, IconData icon) {
     return GestureDetector(
-      // ✅ GESTO: Long press para más opciones
       onLongPress: () {
         showDialog(
           context: context,
