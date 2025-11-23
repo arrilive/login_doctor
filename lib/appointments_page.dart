@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'appointment_model.dart';
 import 'appointment_service.dart';
@@ -15,12 +16,59 @@ class AppointmentsPage extends StatefulWidget {
 class _AppointmentsPageState extends State<AppointmentsPage> {
   final AppointmentService _appointmentService = AppointmentService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
+  String userRole = 'paciente';
+  String medicoNombre = '';
+  bool _isLoadingUser = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser == null) return;
+    
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(_currentUser!.uid)
+          .get();
+      
+      if (doc.exists && mounted) {
+        final data = doc.data();
+        setState(() {
+          userRole = data?['rol'] ?? 'paciente';
+          medicoNombre = data?['nombre'] ?? '';
+          _isLoadingUser = false;
+        });
+        print('👤 Usuario cargado: $medicoNombre (Rol: $userRole)');
+      }
+    } catch (e) {
+      print('❌ Error cargando usuario: $e');
+      if (mounted) {
+        setState(() => _isLoadingUser = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_currentUser == null) {
+      return const Scaffold(
+        body: Center(child: Text('Usuario no autenticado')),
+      );
+    }
+
+    if (_isLoadingUser) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mis Citas'),
+        title: Text(userRole == 'medico' ? 'Mis Citas Médicas' : 'Mis Citas'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -30,83 +78,118 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
           ),
         ],
       ),
-      body: _currentUser == null
-          ? const Center(child: Text('Usuario no autenticado'))
-          : RefreshIndicator(
-              // ✅ GESTO: Pull to refresh
-              onRefresh: () async {
-                setState(() {});
-                await Future.delayed(const Duration(milliseconds: 500));
-              },
-              child: StreamBuilder<List<Appointment>>(
-                stream: _appointmentService.getAppointmentsByPatient(_currentUser!.uid),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 500));
+        },
+        child: StreamBuilder<List<Appointment>>(
+          stream: userRole == 'medico'
+              ? _appointmentService.getAppointmentsByPatient(_currentUser!.uid)
+              : _appointmentService.getAppointmentsByPatient(_currentUser!.uid),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text('Error: ${snapshot.error}'),
-                    );
-                  }
-
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            size: 80,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No tienes citas agendadas',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: () => _navigateToAddAppointment(context),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Agendar Primera Cita'),
-                          ),
-                        ],
+            if (snapshot.hasError) {
+              print('❌ Error en stream: ${snapshot.error}');
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Error al cargar citas',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        '${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
                       ),
-                    );
-                  }
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => setState(() {}),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
-                  List<Appointment> appointments = snapshot.data!;
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              print('ℹ️ No hay citas para mostrar');
+              return Center(
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 80,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        userRole == 'medico' 
+                            ? 'No tienes citas registradas'
+                            : 'No tienes citas agendadas',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      if (userRole == 'paciente')
+                        ElevatedButton.icon(
+                          onPressed: () => _navigateToAddAppointment(context),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Agendar Primera Cita'),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: appointments.length,
-                    itemBuilder: (context, index) {
-                      return _buildAppointmentCard(appointments[index]);
-                    },
-                  );
-                },
-              ),
-            ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToAddAppointment(context),
-        child: const Icon(Icons.add),
+            List<Appointment> appointments = snapshot.data!;
+            print('✅ Mostrando ${appointments.length} citas');
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: appointments.length,
+              itemBuilder: (context, index) {
+                return _buildAppointmentCard(appointments[index]);
+              },
+            );
+          },
+        ),
       ),
+      floatingActionButton: userRole == 'paciente'
+          ? FloatingActionButton(
+              onPressed: () => _navigateToAddAppointment(context),
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
   Widget _buildAppointmentCard(Appointment appointment) {
     Color statusColor = _getStatusColor(appointment.estado);
     IconData statusIcon = _getStatusIcon(appointment.estado);
+    bool canEdit = userRole == 'paciente' && appointment.estado == 'programada';
 
     return Dismissible(
-      // ✅ GESTO: Deslizar para eliminar
       key: Key(appointment.id ?? ''),
-      direction: appointment.estado == 'programada' 
+      direction: canEdit
           ? DismissDirection.endToStart 
           : DismissDirection.none,
       background: Container(
@@ -157,11 +240,9 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
         await _deleteAppointment(appointment.id!);
       },
       child: GestureDetector(
-        // ✅ GESTO: Tap para ver detalles
         onTap: () => _showAppointmentDetails(appointment),
-        // ✅ GESTO: Long press para editar
         onLongPress: () {
-          if (appointment.estado == 'programada') {
+          if (canEdit) {
             _navigateToEditAppointment(context, appointment);
           }
         },
@@ -235,11 +316,17 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                 
                 Row(
                   children: [
-                    const Icon(Icons.person, size: 18, color: Colors.grey),
+                    Icon(
+                      userRole == 'medico' ? Icons.person : Icons.medical_services,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Dr. ${appointment.medicoNombre}',
+                        userRole == 'medico' 
+                            ? appointment.pacienteNombre
+                            : 'Dr. ${appointment.medicoNombre}',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
@@ -290,8 +377,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                   ),
                 ),
                 
-                // Indicador de gestos disponibles
-                if (appointment.estado == 'programada')
+                if (canEdit)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Row(
@@ -365,7 +451,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
           ),
         ),
         actions: [
-          if (appointment.estado == 'programada')
+          if (userRole == 'paciente' && appointment.estado == 'programada')
             TextButton.icon(
               onPressed: () {
                 Navigator.pop(context);
@@ -440,6 +526,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
         );
       }
     } catch (e) {
+      print('❌ Error cancelando cita: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

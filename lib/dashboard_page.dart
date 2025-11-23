@@ -23,22 +23,54 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _loadMedicoData() async {
+    setState(() => _isLoading = true);
+    
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final doc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(user.uid)
-          .get();
-      
-      if (doc.exists && doc.data()?['nombre'] != null) {
-        setState(() {
-          medicoNombre = doc.data()!['nombre'];
-          _isLoading = false;
-        });
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(user.uid)
+            .get();
         
-        // Cargar datos del dashboard
-        context.read<DashboardBloc>().add(LoadDashboardData(medicoNombre));
+        if (doc.exists) {
+          final data = doc.data();
+          if (data != null && data['nombre'] != null) {
+            setState(() {
+              medicoNombre = data['nombre'];
+              _isLoading = false;
+            });
+            
+            print('📊 Dashboard - Cargando datos para: $medicoNombre');
+            
+            // Cargar datos del dashboard
+            if (mounted) {
+              context.read<DashboardBloc>().add(LoadDashboardData(medicoNombre));
+            }
+          } else {
+            print('⚠️ Documento existe pero no tiene nombre');
+            setState(() => _isLoading = false);
+          }
+        } else {
+          print('⚠️ Documento de usuario no existe');
+          setState(() => _isLoading = false);
+        }
+      } catch (e) {
+        print('❌ Error cargando datos del médico: $e');
+        setState(() => _isLoading = false);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
+    } else {
+      print('⚠️ Usuario no autenticado');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -46,7 +78,52 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Cargando datos del médico...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (medicoNombre.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Dashboard Médico'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.red[300],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Error al cargar datos del médico',
+                style: TextStyle(fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Por favor verifica tu perfil',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadMedicoData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -68,27 +145,33 @@ class _DashboardPageState extends State<DashboardPage> {
 
             if (state is DashboardError) {
               return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-                    const SizedBox(height: 16),
-                    Text(
-                      state.message,
-                      style: const TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          state.message,
+                          style: const TextStyle(fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            context
+                                .read<DashboardBloc>()
+                                .add(LoadDashboardData(medicoNombre));
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reintentar'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        context
-                            .read<DashboardBloc>()
-                            .add(LoadDashboardData(medicoNombre));
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reintentar'),
-                    ),
-                  ],
+                  ),
                 ),
               );
             }
@@ -97,7 +180,16 @@ class _DashboardPageState extends State<DashboardPage> {
               return _buildDashboardContent(state.stats);
             }
 
-            return const Center(child: Text('Iniciando...'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text('Iniciando dashboard para $medicoNombre...'),
+                ],
+              ),
+            );
           },
         ),
       ),
@@ -157,7 +249,8 @@ class _DashboardPageState extends State<DashboardPage> {
                                 ),
                               ),
                               Text(
-                                DateFormat('EEEE, d \'de\' MMMM \'de\' yyyy').format(DateTime.now()),
+                                DateFormat('EEEE, d \'de\' MMMM \'de\' yyyy', 'es')
+                                    .format(DateTime.now()),
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.9),
                                   fontSize: 14,

@@ -20,11 +20,24 @@ class _ProfilePageState extends State<ProfilePage> {
 
   bool _loading = false;
   bool _hasChanges = false;
-  String _selectedRol = 'paciente'; // ✅ NUEVO
+  String _selectedRol = 'paciente';
+  String _selectedEspecialidad = 'Medicina General'; // 🔥 NUEVO
 
   final List<Map<String, dynamic>> _roles = [
     {'value': 'paciente', 'label': 'Paciente', 'icon': Icons.person},
     {'value': 'medico', 'label': 'Médico', 'icon': Icons.medical_services},
+  ];
+
+  // 🔥 NUEVO: Lista de especialidades
+  final List<String> _especialidades = [
+    'Cardiología',
+    'Pediatría',
+    'Dermatología',
+    'Neurología',
+    'Traumatología',
+    'Medicina General',
+    'Oftalmología',
+    'Ginecología',
   ];
 
   @override
@@ -51,7 +64,8 @@ class _ProfilePageState extends State<ProfilePage> {
       edadController.text = data['edad'] ?? '';
       lugarNacimientoController.text = data['lugar_nacimiento'] ?? '';
       padecimientosController.text = data['padecimientos'] ?? '';
-      _selectedRol = data['rol'] ?? 'paciente'; // ✅ NUEVO
+      _selectedRol = data['rol'] ?? 'paciente';
+      _selectedEspecialidad = data['especialidad'] ?? 'Medicina General'; // 🔥 NUEVO
     }
 
     setState(() {
@@ -73,7 +87,8 @@ class _ProfilePageState extends State<ProfilePage> {
       'padecimientos': padecimientosController.text.trim(),
       'email': user.email,
       'uid': user.uid,
-      'rol': _selectedRol, // ✅ NUEVO
+      'rol': _selectedRol,
+      'especialidad': _selectedEspecialidad, // 🔥 NUEVO
     });
 
     setState(() {
@@ -240,7 +255,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 32),
 
-                      // ✅ NUEVO: Selector de Rol
+                      // Selector de Rol
                       Text(
                         'Rol en la Aplicación',
                         style: TextStyle(
@@ -315,6 +330,43 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 24),
+
+                      // 🔥 NUEVO: Especialidad (solo para médicos)
+                      if (_selectedRol == 'medico') ...[
+                        Text(
+                          'Especialidad Médica',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _selectedEspecialidad,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.medical_services),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          items: _especialidades.map((especialidad) {
+                            return DropdownMenuItem(
+                              value: especialidad,
+                              child: Text(especialidad),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedEspecialidad = value!;
+                              _hasChanges = true;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                       
                       Text(
                         'Información Personal',
@@ -350,15 +402,18 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        controller: padecimientosController,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Padecimientos',
-                          prefixIcon: Icon(Icons.medical_information_outlined),
-                          alignLabelWithHint: true,
+                      
+                      // Padecimientos (solo para pacientes)
+                      if (_selectedRol == 'paciente')
+                        TextField(
+                          controller: padecimientosController,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'Padecimientos',
+                            prefixIcon: Icon(Icons.medical_information_outlined),
+                            alignLabelWithHint: true,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 32),
                       
                       AnimatedContainer(

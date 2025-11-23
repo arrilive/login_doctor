@@ -27,8 +27,9 @@ class _AppointmentFormPageState extends State<AppointmentFormPage> {
   String _selectedEspecialidad = '';
   String _pacienteNombre = '';
   bool _isLoading = false;
+  bool _loadingMedicos = true;
 
-  // Listas de especialidades y médicos
+  // Lista de especialidades (estática)
   final List<String> _especialidades = [
     'Cardiología',
     'Pediatría',
@@ -40,25 +41,85 @@ class _AppointmentFormPageState extends State<AppointmentFormPage> {
     'Ginecología',
   ];
 
-  final Map<String, List<String>> _medicosPorEspecialidad = {
-    'Cardiología': ['García López', 'Martínez Ruiz', 'Hernández Silva'],
-    'Pediatría': ['Rodríguez Cruz', 'López Fernández', 'González Pérez'],
-    'Dermatología': ['Sánchez Torres', 'Ramírez Gómez'],
-    'Neurología': ['Díaz Morales', 'Torres Vargas'],
-    'Traumatología': ['Jiménez Castro', 'Morales Reyes'],
-    'Medicina General': ['Flores Medina', 'Castro Ortiz', 'Mendoza Luna'],
-    'Oftalmología': ['Ortiz Navarro', 'Vega Santos'],
-    'Ginecología': ['Ruiz Delgado', 'Aguilar Ríos'],
-  };
+  // 🔥 NUEVO: Médicos cargados dinámicamente desde Firestore
+  List<Map<String, String>> _medicosDisponibles = [];
+  List<Map<String, String>> get _medicosFiltrados {
+    if (_selectedEspecialidad.isEmpty) return _medicosDisponibles;
+    return _medicosDisponibles
+        .where((medico) => medico['especialidad'] == _selectedEspecialidad)
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _motivoController = TextEditingController();
     _loadUserData();
+    _loadMedicosFromFirestore(); // 🔥 NUEVO
     
     if (widget.appointment != null) {
       _loadAppointmentData();
+    }
+  }
+
+  // 🔥 NUEVO: Cargar médicos reales desde Firestore
+  Future<void> _loadMedicosFromFirestore() async {
+    setState(() => _loadingMedicos = true);
+    
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('rol', isEqualTo: 'medico')
+          .get();
+
+      final medicos = <Map<String, String>>[];
+      
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final nombre = data['nombre'] ?? '';
+        
+        if (nombre.isNotEmpty) {
+          // Intentar obtener especialidad del médico, o asignar una por defecto
+          final especialidad = data['especialidad'] ?? 'Medicina General';
+          
+          medicos.add({
+            'nombre': nombre,
+            'especialidad': especialidad,
+            'uid': doc.id,
+          });
+          
+          print('👨‍⚕️ Médico cargado: $nombre - $especialidad');
+        }
+      }
+
+      setState(() {
+        _medicosDisponibles = medicos;
+        _loadingMedicos = false;
+      });
+
+      print('✅ Total de médicos cargados: ${medicos.length}');
+
+      // Si no hay médicos, mostrar advertencia
+      if (medicos.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay médicos disponibles. Verifica tu perfil.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error cargando médicos: $e');
+      setState(() => _loadingMedicos = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar médicos: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -113,202 +174,266 @@ class _AppointmentFormPageState extends State<AppointmentFormPage> {
       appBar: AppBar(
         title: Text(isEditing ? 'Editar Cita' : 'Nueva Cita'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Especialidad
-                    DropdownButtonFormField<String>(
-                      value: _selectedEspecialidad.isEmpty ? null : _selectedEspecialidad,
-                      decoration: const InputDecoration(
-                        labelText: 'Especialidad',
-                        prefixIcon: Icon(Icons.medical_services),
+      body: _isLoading || _loadingMedicos
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Cargando médicos disponibles...'),
+                ],
+              ),
+            )
+          : _medicosDisponibles.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.warning_amber, size: 64, color: Colors.orange[300]),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No hay médicos disponibles',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
-                      items: _especialidades.map((especialidad) {
-                        return DropdownMenuItem(
-                          value: especialidad,
-                          child: Text(especialidad),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedEspecialidad = value!;
-                          _selectedMedico = '';
-                        });
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor selecciona una especialidad';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Médico
-                    DropdownButtonFormField<String>(
-                      value: _selectedMedico.isEmpty ? null : _selectedMedico,
-                      decoration: const InputDecoration(
-                        labelText: 'Médico',
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                      items: _selectedEspecialidad.isEmpty
-                          ? []
-                          : _medicosPorEspecialidad[_selectedEspecialidad]!
-                              .map((medico) {
-                              return DropdownMenuItem(
-                                value: medico,
-                                child: Text('Dr. $medico'),
-                              );
-                            }).toList(),
-                      onChanged: _selectedEspecialidad.isEmpty
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _selectedMedico = value!;
-                              });
-                            },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor selecciona un médico';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Fecha
-                    InkWell(
-                      onTap: _selectDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Fecha',
-                          prefixIcon: Icon(Icons.calendar_today),
-                        ),
+                      const SizedBox(height: 8),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 32),
                         child: Text(
-                          DateFormat('dd/MM/yyyy').format(_selectedDate),
-                          style: const TextStyle(fontSize: 16),
+                          'Asegúrate de que existan usuarios con rol "médico" y que tengan un nombre configurado.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Horario
-                    Row(
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text('Volver'),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => _selectTime(true),
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Hora Inicio',
-                                prefixIcon: Icon(Icons.access_time),
+                        // Banner informativo
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.blue[700]),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  '${_medicosDisponibles.length} médico(s) disponible(s)',
+                                  style: TextStyle(
+                                    color: Colors.blue[900],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               ),
-                              child: Text(
-                                _startTime.format(context),
-                                style: const TextStyle(fontSize: 16),
-                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Especialidad
+                        DropdownButtonFormField<String>(
+                          value: _selectedEspecialidad.isEmpty ? null : _selectedEspecialidad,
+                          decoration: const InputDecoration(
+                            labelText: 'Especialidad',
+                            prefixIcon: Icon(Icons.medical_services),
+                          ),
+                          items: _especialidades.map((especialidad) {
+                            return DropdownMenuItem(
+                              value: especialidad,
+                              child: Text(especialidad),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedEspecialidad = value!;
+                              _selectedMedico = '';
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor selecciona una especialidad';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Médico (cargado dinámicamente)
+                        DropdownButtonFormField<String>(
+                          value: _selectedMedico.isEmpty ? null : _selectedMedico,
+                          decoration: InputDecoration(
+                            labelText: 'Médico',
+                            prefixIcon: const Icon(Icons.person),
+                            helperText: _selectedEspecialidad.isEmpty
+                                ? 'Selecciona una especialidad primero'
+                                : '${_medicosFiltrados.length} médico(s) en esta especialidad',
+                          ),
+                          items: _medicosFiltrados.map((medico) {
+                            return DropdownMenuItem(
+                              value: medico['nombre'],
+                              child: Text('Dr. ${medico['nombre']}'),
+                            );
+                          }).toList(),
+                          onChanged: _medicosFiltrados.isEmpty
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _selectedMedico = value!;
+                                  });
+                                },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor selecciona un médico';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Fecha
+                        InkWell(
+                          onTap: _selectDate,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Fecha',
+                              prefixIcon: Icon(Icons.calendar_today),
+                            ),
+                            child: Text(
+                              DateFormat('dd/MM/yyyy').format(_selectedDate),
+                              style: const TextStyle(fontSize: 16),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => _selectTime(false),
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Hora Fin',
-                                prefixIcon: Icon(Icons.access_time),
-                              ),
-                              child: Text(
-                                _endTime.format(context),
-                                style: const TextStyle(fontSize: 16),
+                        const SizedBox(height: 16),
+
+                        // Horario
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => _selectTime(true),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Hora Inicio',
+                                    prefixIcon: Icon(Icons.access_time),
+                                  ),
+                                  child: Text(
+                                    _startTime.format(context),
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => _selectTime(false),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Hora Fin',
+                                    prefixIcon: Icon(Icons.access_time),
+                                  ),
+                                  child: Text(
+                                    _endTime.format(context),
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Motivo
+                        TextFormField(
+                          controller: _motivoController,
+                          decoration: const InputDecoration(
+                            labelText: 'Motivo de la consulta',
+                            prefixIcon: Icon(Icons.notes),
+                            hintText: 'Describe el motivo de tu consulta',
+                          ),
+                          maxLines: 3,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa el motivo de la consulta';
+                            }
+                            if (value.length < 10) {
+                              return 'El motivo debe tener al menos 10 caracteres';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Información del paciente
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person, color: Color(0xFF2196F3)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Paciente',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    Text(
+                                      _pacienteNombre.isEmpty ? 'Cargando...' : _pacienteNombre,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Botón de guardar
+                        ElevatedButton(
+                          onPressed: _saveAppointment,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: Text(
+                            isEditing ? 'Actualizar Cita' : 'Agendar Cita',
+                            style: const TextStyle(fontSize: 16),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-
-                    // Motivo
-                    TextFormField(
-                      controller: _motivoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Motivo de la consulta',
-                        prefixIcon: Icon(Icons.notes),
-                        hintText: 'Describe el motivo de tu consulta',
-                      ),
-                      maxLines: 3,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor ingresa el motivo de la consulta';
-                        }
-                        if (value.length < 10) {
-                          return 'El motivo debe tener al menos 10 caracteres';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Información del paciente
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person, color: Color(0xFF2196F3)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Paciente',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                Text(
-                                  _pacienteNombre.isEmpty ? 'Cargando...' : _pacienteNombre,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Botón de guardar
-                    ElevatedButton(
-                      onPressed: _saveAppointment,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: Text(
-                        isEditing ? 'Actualizar Cita' : 'Agendar Cita',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -426,6 +551,8 @@ class _AppointmentFormPageState extends State<AppointmentFormPage> {
         estado: widget.appointment?.estado ?? 'programada',
       );
 
+      print('💾 Guardando cita para médico: $_selectedMedico');
+
       if (widget.appointment == null) {
         // Crear nueva cita
         await _appointmentService.createAppointment(appointment);
@@ -455,6 +582,7 @@ class _AppointmentFormPageState extends State<AppointmentFormPage> {
         }
       }
     } catch (e) {
+      print('❌ Error guardando cita: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

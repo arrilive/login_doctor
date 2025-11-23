@@ -7,6 +7,7 @@ import 'settings_page.dart';
 import 'appointments_page.dart';
 import 'dashboard_page.dart';
 import 'dashboard_bloc.dart';
+import 'graphics_page.dart'; // ✅ NUEVO
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,7 +19,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   String userName = 'Usuario';
-  String userRole = 'paciente'; // ✅ NUEVO
+  String userRole = 'paciente';
 
   @override
   void initState() {
@@ -37,7 +38,7 @@ class _HomePageState extends State<HomePage> {
       if (doc.exists && doc.data()?['nombre'] != null) {
         setState(() {
           userName = doc.data()!['nombre'];
-          userRole = doc.data()!['rol'] ?? 'paciente'; // ✅ NUEVO
+          userRole = doc.data()!['rol'] ?? 'paciente';
         });
       }
     }
@@ -178,11 +179,85 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 24),
 
-                // ✅ NUEVO: Widgets principales condicionales según el rol
-                Row(
-                  children: [
-                    if (userRole == 'paciente') ...[
-                      // Widget para PACIENTES
+                // Widgets principales condicionales según el rol
+                if (userRole == 'medico') ...[
+                  // Grid 2x2 para médicos
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.dashboard,
+                          title: 'Dashboard',
+                          color: const Color(0xFF4CAF50),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BlocProvider(
+                                  create: (context) => DashboardBloc(),
+                                  child: const DashboardPage(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.calendar_today,
+                          title: 'Mis Citas',
+                          color: const Color(0xFF2196F3),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AppointmentsPage(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.bar_chart,
+                          title: 'Estadísticas',
+                          color: const Color(0xFFFF9800),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const GraphicsPage(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.medical_information,
+                          title: 'Pacientes',
+                          color: const Color(0xFF9C27B0),
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Función de pacientes')),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  // Grid 1x2 para pacientes
+                  Row(
+                    children: [
                       Expanded(
                         child: _buildActionCard(
                           icon: Icons.calendar_today,
@@ -198,56 +273,23 @@ class _HomePageState extends State<HomePage> {
                           },
                         ),
                       ),
-                    ] else if (userRole == 'medico') ...[
-                      // Widget para MÉDICOS
+                      const SizedBox(width: 16),
                       Expanded(
                         child: _buildActionCard(
-                          icon: Icons.dashboard,
-                          title: 'Ver Dashboard',
+                          icon: Icons.medical_information,
+                          title: 'Consejos médicos',
                           color: const Color(0xFF4CAF50),
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => BlocProvider(
-                                  create: (context) => DashboardBloc(),
-                                  child: const DashboardPage(),
-                                ),
-                              ),
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Función de consejos médicos')),
                             );
                           },
                         ),
                       ),
                     ],
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildActionCard(
-                        icon: Icons.medical_information,
-                        title: userRole == 'medico' 
-                            ? 'Mis Citas' 
-                            : 'Consejos médicos',
-                        color: userRole == 'medico'
-                            ? const Color(0xFF2196F3)
-                            : const Color(0xFF4CAF50),
-                        onTap: () {
-                          if (userRole == 'medico') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const AppointmentsPage(),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Función de consejos médicos')),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
                 const SizedBox(height: 32),
 
                 // Especialistas

@@ -7,6 +7,7 @@ import 'appointments_page.dart';
 import 'appointment_form_page.dart';
 import 'dashboard_page.dart';
 import 'dashboard_bloc.dart';
+import 'graphics_page.dart'; // ✅ NUEVO
 
 class Routes {
   static const String login = '/login';
@@ -14,7 +15,8 @@ class Routes {
   static const String profile = '/profile';
   static const String appointments = '/appointments';
   static const String appointmentForm = '/appointment-form';
-  static const String dashboard = '/dashboard'; // ✅ NUEVO
+  static const String dashboard = '/dashboard';
+  static const String graphics = '/graphics'; // ✅ NUEVO
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -33,7 +35,6 @@ class Routes {
       case appointmentForm:
         return MaterialPageRoute(builder: (_) => const AppointmentFormPage());
       
-      // ✅ NUEVO: Ruta del Dashboard con BlocProvider
       case dashboard:
         return MaterialPageRoute(
           builder: (_) => BlocProvider(
@@ -41,6 +42,9 @@ class Routes {
             child: const DashboardPage(),
           ),
         );
+      
+      case graphics:
+        return MaterialPageRoute(builder: (_) => const GraphicsPage());
       
       default:
         return MaterialPageRoute(
